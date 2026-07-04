@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PULSO — Player de Vídeo</title>
+<meta name="6a97888e-site-verification" content="6c43841fa535969d28be495032e6b640">
+
+<!-- Google IMA SDK para VAST -->
+<script src="https://imasdk.googleapis.com/js/sdkloader/ima3.js"></script>
+
+<!-- ExoClick Ad Provider -->
+<script async type="application/javascript" src="https://a.magsrv.com/ad-provider.js"></script>
+
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    background:#0B1320;
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    min-height:100vh;
+    font-family:'Inter',sans-serif;
+    padding:20px;
+  }
+
+  .player-wrapper{
+    width:100%;max-width:780px;
+    background:#000;
+    border-radius:10px;
+    overflow:hidden;
+    box-shadow:0 20px 60px rgba(0,0,0,.6);
+    position:relative;
+  }
+
+  /* Contentor do vídeo + anúncio VAST */
+  #video-container{
+    position:relative;
+    width:100%;
+    padding-top:56.25%; /* 16:9 */
+    background:#000;
+  }
+
+  #content-video,
+  #ad-container{
+    position:absolute;
+    top:0;left:0;
+    width:100%;height:100%;
+  }
+
+  #content-video{
+    display:block;
+    width:100%;height:100%;
+    object-fit:contain;
+    background:#000;
+  }
+
+  #ad-container{
+    z-index:10;
+  }
+
+  /* Controlos personalizados */
+  .controls{
+    background:linear-gradient(0deg,rgba(0,0,0,.85) 0%,transparent 100%);
+    padding:14px 18px 16px;
+    display:flex;align-items:center;gap:14px;
+    position:relative;
+  }
+  .btn-play{
+    width:40px;height:40px;border-radius:50%;
+    background:#C99A2E;border:none;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;transition:background .15s;
+  }
+  .btn-play:hover{background:#e0b030;}
+  .btn-play svg{width:16px;height:16px;fill:#0B1320;}
+
+  .progress-wrap{
+    flex:1;height:4px;background:rgba(255,255,255,.2);
+    border-radius:4px;cursor:pointer;position:relative;
+  }
+  .progress-bar{
+    height:100%;background:#C99A2E;border-radius:4px;
+    width:0%;transition:width .1s linear;
+  }
+
+  .time{
+    font-size:12px;color:#ccc;
+    font-family:monospace;white-space:nowrap;
+  }
+
+  .btn-vol{
+    background:none;border:none;cursor:pointer;
+    color:#ccc;font-size:18px;padding:2px 4px;
+  }
+
+  /* Overlay de play inicial */
+  .play-overlay{
+    position:absolute;top:0;left:0;right:0;bottom:0;
+    display:flex;align-items:center;justify-content:center;
+    z-index:5;cursor:pointer;
+    background:rgba(0,0,0,.35);
+    transition:opacity .2s;
+  }
+  .play-overlay.hidden{opacity:0;pointer-events:none;}
+  .play-overlay .big-play{
+    width:72px;height:72px;border-radius:50%;
+    background:rgba(201,154,46,.9);
+    display:flex;align-items:center;justify-content:center;
+    transition:transform .15s;
+  }
+  .play-overlay:hover .big-play{transform:scale(1.08);}
+  .play-overlay .big-play svg{width:28px;height:28px;fill:#fff;margin-left:4px;}
+
+  /* Título do player */
+  .player-header{
+    padding:14px 18px;
+    display:flex;align-items:center;gap:10px;
+  }
+  .player-header .logo{
+    font-family:Georgia,serif;font-weight:900;font-size:22px;color:#C99A2E;
+  }
+  .player-header .label{
+    font-size:12px;color:#aeb9c8;font-family:monospace;
+    letter-spacing:.08em;text-transform:uppercase;
+  }
+
+  /* Mensagem de erro */
+  #error-msg{
+    display:none;color:#ff6b6b;font-size:14px;
+    text-align:center;padding:20px;
+  }
+
+  /* Loading spinner */
+  #loading{
+    position:absolute;top:50%;left:50%;
+    transform:translate(-50%,-50%);
+    z-index:8;display:none;
+  }
+  #loading .spinner{
+    width:40px;height:40px;border-radius:50%;
+    border:3px solid rgba(201,154,46,.3);
+    border-top-color:#C99A2E;
+    animation:spin .7s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+</style>
+</head>
+<body>
+
+<div class="player-wrapper">
+  <div class="player-header">
+    <span class="logo">PULSO</span>
+    <span class="label">▶ Vídeo</span>
+  </div>
+
+  <div id="video-container">
+    <video id="content-video" preload="none">
+      <!-- vídeo de conteúdo — podes apontar para um URL de vídeo real aqui -->
+      <source src="" type="video/mp4">
+    </video>
+
+    <!-- o anúncio VAST vai ser renderizado aqui -->
+    <div id="ad-container"></div>
+
+    <!-- overlay inicial -->
+    <div class="play-overlay" id="playOverlay" onclick="startPlayer()">
+      <div class="big-play">
+        <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+      </div>
+    </div>
+
+    <!-- loading -->
+    <div id="loading"><div class="spinner"></div></div>
+  </div>
+
+  <div class="controls">
+    <button class="btn-play" id="btnPlay" onclick="togglePlay()">
+      <svg id="iconPlay" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+    </button>
+
+    <div class="progress-wrap" id="progressWrap" onclick="seek(event)">
+      <div class="progress-bar" id="progressBar"></div>
+    </div>
+
+    <span class="time" id="timeDisplay">0:00 / 0:00</span>
+
+    <button class="btn-vol" onclick="toggleMute()" id="btnVol">🔊</button>
+  </div>
+
+  <div id="error-msg">Não foi possível carregar o anúncio. Tenta novamente.</div>
+</div>
+
+<script>
+  // ============================
+  // CONFIG DO VAST
+  // ============================
+  const VAST_URL = 'https://s.magsrv.com/v1/vast.php?idz=5966754';
+
+  let adsManager = null;
+  let adsLoader = null;
+  let adDisplayContainer = null;
+  let adStarted = false;
+  let isMuted = false;
+
+  const video = document.getElementById('content-video');
+  const adContainer = document.getElementById('ad-container');
+  const progressBar = document.getElementById('progressBar');
+  const timeDisplay = document.getElementById('timeDisplay');
+  const playOverlay = document.getElementById('playOverlay');
+  const loading = document.getElementById('loading');
+  const btnPlay = document.getElementById('btnPlay');
+  const iconPlay = document.getElementById('iconPlay');
+
+  function fmt(s){
+    s = Math.floor(s)||0;
+    return Math.floor(s/60)+':'+(s%60<10?'0':'')+s%60;
+  }
+
+  function startPlayer(){
+    playOverlay.classList.add('hidden');
+    loading.style.display='block';
+    initIMA();
+  }
+
+  function initIMA(){
+    google.ima.settings.setDisableCustomPlaybackForIOS10Plus(true);
+
+    adDisplayContainer = new google.ima.AdDisplayContainer(adContainer, video);
+    adDisplayContainer.initialize();
+
+    adsLoader = new google.ima.AdsLoader(adDisplayContainer);
+    adsLoader.addEventListener(google.ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED, onAdsManagerLoaded, false);
+    adsLoader.addEventListener(google.ima.AdErrorEvent.Type.AD_ERROR, onAdError, false);
+
+    const req = new google.ima.AdsRequest();
+    req.adTagUrl = VAST_URL;
+    req.linearAdSlotWidth = video.clientWidth || 640;
+    req.linearAdSlotHeight = video.clientHeight || 360;
+    req.nonLinearAdSlotWidth = video.clientWidth || 640;
+    req.nonLinearAdSlotHeight = 150;
+
+    adsLoader.requestAds(req);
+  }
+
+  function onAdsManagerLoaded(evt){
+    loading.style.display='none';
+    const renderSettings = new google.ima.AdsRenderingSettings();
+    renderSettings.restoreCustomPlaybackStateOnAdBreakComplete = true;
+
+    adsManager = evt.getAdsManager(video, renderSettings);
+
+    adsManager.addEventListener(google.ima.AdErrorEvent.Type.AD_ERROR, onAdError);
+    adsManager.addEventListener(google.ima.AdEvent.Type.CONTENT_PAUSE_REQUESTED, ()=>{ video.pause(); });
+    adsManager.addEventListener(google.ima.AdEvent.Type.CONTENT_RESUME_REQUESTED, ()=>{ video.play(); });
+    adsManager.addEventListener(google.ima.AdEvent.Type.COMPLETE, onAdComplete);
+    adsManager.addEventListener(google.ima.AdEvent.Type.STARTED, ()=>{ updateIcon(true); });
+    adsManager.addEventListener(google.ima.AdEvent.Type.PAUSED, ()=>{ updateIcon(false); });
+    adsManager.addEventListener(google.ima.AdEvent.Type.RESUMED, ()=>{ updateIcon(true); });
+
+    try{
+      adsManager.init(video.clientWidth||640, video.clientHeight||360, google.ima.ViewMode.NORMAL);
+      adsManager.start();
+      adStarted = true;
+    }catch(e){ onAdError(e); }
+  }
+
+  function onAdComplete(){
+    updateIcon(false);
+    adsLoader.contentComplete();
+  }
+
+  function onAdError(e){
+    loading.style.display='none';
+    document.getElementById('error-msg').style.display='block';
+    console.error('VAST error:', e.getError ? e.getError() : e);
+    if(adsManager) adsManager.destroy();
+  }
+
+  function togglePlay(){
+    if(!adStarted){ startPlayer(); return; }
+    if(adsManager){
+      try{
+        if(video.paused){ adsManager.resume(); }
+        else { adsManager.pause(); }
+      }catch(e){}
+    } else {
+      video.paused ? video.play() : video.pause();
+    }
+    updateIcon(!video.paused);
+  }
+
+  function updateIcon(playing){
+    iconPlay.innerHTML = playing
+      ? '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>'
+      : '<path d="M8 5v14l11-7z"/>';
+  }
+
+  function toggleMute(){
+    isMuted = !isMuted;
+    video.muted = isMuted;
+    if(adsManager) try{ adsManager.setVolume(isMuted?0:1); }catch(e){}
+    document.getElementById('btnVol').textContent = isMuted ? '🔇' : '🔊';
+  }
+
+  function seek(e){
+    if(!video.duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pct = (e.clientX - rect.left)/rect.width;
+    video.currentTime = pct * video.duration;
+  }
+
+  // Atualizar barra de progresso
+  video.addEventListener('timeupdate', ()=>{
+    if(!video.duration) return;
+    const pct = (video.currentTime/video.duration)*100;
+    progressBar.style.width = pct+'%';
+    timeDisplay.textContent = fmt(video.currentTime)+' / '+fmt(video.duration);
+  });
+
+  video.addEventListener('play',  ()=>updateIcon(true));
+  video.addEventListener('pause', ()=>updateIcon(false));
+
+  // Redimensionar adsManager ao mudar tamanho da janela
+  window.addEventListener('resize', ()=>{
+    if(adsManager) try{
+      adsManager.resize(video.clientWidth, video.clientHeight, google.ima.ViewMode.NORMAL);
+    }catch(e){}
+  });
+</script>
+
+</body>
+</html>
